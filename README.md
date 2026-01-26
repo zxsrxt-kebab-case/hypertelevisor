@@ -1,9 +1,3 @@
-# hypertelevisor
-api and binaries of this
-
-
-# Api:
-
 # Документация Scripting API
 
 Данная система скриптинга построена на базе **ChaiScript**. Это встраиваемый скриптовый язык для C++, синтаксис которого очень напоминает C++ и JavaScript.
