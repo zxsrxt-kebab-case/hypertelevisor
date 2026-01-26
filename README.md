@@ -4,68 +4,253 @@ api and binaries of this
 
 # Api:
 
-# Документация API (ChaiScript)
+# Документация Scripting API
 
-### 1. Основная структура скрипта
-Скрипт должен содержать глобальные переменные для настроек и две обязательные функции:
+Данная система скриптинга построена на базе **ChaiScript**. Это встраиваемый скриптовый язык для C++, синтаксис которого очень напоминает C++ и JavaScript.
 
+*   **Официальный сайт:** [https://chaiscript.com/](https://chaiscript.com/)
+*   **Особенность:** Язык строго типизирован внутри (C++), но динамичен снаружи. Переменные объявляются через `var` или `global` (если нужно сохранить значение между кадрами).
+
+---
+
+## 1. Базовые типы и Математика
+
+### Вектор 3D (`vec3`)
+Используется для координат в мире.
+
+*   **Создание:**
+    ```javascript
+    var v1 = vec3();          // (0, 0, 0)
+    var v2 = vec3(10, 20, 30);// (x, y, z)
+    var v3 = vec3(10, 20, 30).clone(); // Копия вектора
+    ```
+*   **Поля:** `v.x`, `v.y`, `v.z`
+*   **Операции:** `v1 + v2`, `v1 - v2`, `v1 = v2` (присваивание).
+*   **Методы:**
+    *   `v.dist()` — возвращает длину вектора (magnitude).
+    *   `to_string(v)` — возвращает строку вида `"(x, y, z)"`.
+
+### Вектор 2D (`vec2`)
+Используется для экранных координат и размеров интерфейса.
+
+*   **Создание:** `var v = vec2(x, y);`
+*   **Поля:** `v.x`, `v.y`
+*   **Операции:** Сложение `+`, вычитание `-`, `clone()`.
+
+### Цвет (`Color`)
+Используется во всех функциях отрисовки.
+
+*   **Создание:** `Color(r, g, b, a)` (0-255).
+*   **Поля:** `.r`, `.g`, `.b`, `.a`.
+*   **Пример:** `var red = Color(255, 0, 0, 255);`
+
+---
+
+## 2. Unity API: Transform и Компоненты
+
+Это самая важная часть. В движке есть два типа структур Transform: **Internal** (внутренние структуры Unity) и **Normal** (обертки C#). Важно знать, какой использовать.
+
+### Основные функции
+*   `Component_get_transform(ptr)` — Получает Transform из любого компонента (например, из Player).
+    *   ⚠️ **Возвращает Internal Transform**.
+*   `Biped_get_head(biped_map)` / `Biped_get_body(...)` — Получают Transform кости.
+    *   ✅ **Возвращает Normal Transform**.
+
+### Получение позиции
+Для работы с разными типами трансформов есть две функции:
+
+1.  **`Transform_get_position(transform)`**
+    *   Автоматически вызывает версию с `false` (считает, что трансформ обычный). Подходит для костей.
+2.  **`Transform_get_position_ex(transform, is_internal)`**
+    *   Позволяет указать тип трансформа вручную.
+    *   `is_internal = true` — если трансформ получен через `Component_get_transform`.
+    *   `is_internal = false` — если трансформ получен через кости (`Biped`).
+
+**Пример:**
 ```javascript
-// Настройки (должны быть global, чтобы сохраняться)
-global enable_esp = true;
+// 1. Позиция игрока (Internal)
+var trans_comp = Component_get_transform(player); 
+var pos_player = Transform_get_position_ex(trans_comp, true); 
 
-// Вызывается для отрисовки интерфейса (ImGui)
-def on_menu() {
-    gui_checkbox("Enable", enable_esp);
-}
-
-// Вызывается каждый кадр для отрисовки (ESP)
-def on_render() {
-    if (!enable_esp) return;
-    // логика...
-}
+// 2. Позиция головы (Normal)
+var view = Player_get_view(player);
+var map = View_get_biped_map(view);
+var trans_head = Biped_get_head(map);
+var pos_head = Transform_get_position_ex(trans_head, false); 
+// или просто: var pos_head = Transform_get_position(trans_head);
 ```
 
-### 2. Интерфейс (GUI)
-Функции меняют значение переданной глобальной переменной.
+### World to Screen
+*   `update_camera()` — **Обязательно** вызывать один раз в начале `on_render`. Кэширует матрицу.
+*   `w2s(vec3_world, vec3_screen_out)` — Конвертирует 3D в 2D.
+    *   Возвращает `true`, если объект на экране.
+    *   Записывает результат во второй аргумент (передача по ссылке).
 
-| Функция | Описание | Пример |
-| :--- | :--- | :--- |
-| `gui_checkbox(label, var)` | Чекбокс (On/Off). Меняет `bool`. | `gui_checkbox("ESP", esp_enable)` |
-| `gui_slider_float(label, var, min, max)` | Ползунок для дробных чисел. | `gui_slider_float("Dist", dist, 0.0, 1000.0)` |
-| `gui_slider_int(label, var, min, max)` | Ползунок для целых чисел. | `gui_slider_int("Team", team, 0, 10)` |
-| `gui_text(text)` | Просто текст. | `gui_text("Меню чита")` |
-| `gui_button(text)` | Кнопка. Возвращает `true` при клике. | `if (gui_button("Reset")) { ... }` |
+---
 
-### 3. Отрисовка (Render)
-Координаты экранные. Цвета задаются через `Color(r, g, b, a)`.
+## 3. Игровые сущности (Game SDK)
 
-| Функция | Аргументы |
-| :--- | :--- |
-| `draw_line` | `x1, y1, x2, y2, color, thickness` |
-| `draw_rect` | `x, y, w, h, color, rounding, thickness` |
-| `draw_rect_filled`| `x, y, w, h, color, rounding` |
-| `draw_circle` | `x, y, radius, color, segments, thickness` |
-| `draw_text` | `x, y, text, color, shadow_bool` |
+### Player Manager
+*   `PlayerManager_get_player_manager()` — Получить адрес менеджера.
+*   `PlayerManager_get_local_player(mgr)` — Адрес вашего игрока.
+*   `PlayerManager_get_players(mgr)` — Возвращает `std::map` (словарь) всех игроков.
 
-### 4. Работа с Игрой (Game SDK)
+### Player
+Любой `player_ptr` наследуется от Component.
+*   `Player_get_photon(player)` — Сетевые данные.
+*   `Player_get_team(player)` — Команда (int).
+*   `Player_get_view(player)` — Визуальные данные (скелет).
+*   `Player_is_visible(player)` — Проверка видимости (Raycast check).
 
-**Системные:**
-*   `update_camera()` — **Важно:** вызывать в начале `on_render`. Обновляет матрицу для работы `w2s`.
-*   `w2s(vec3_pos, vec3_out)` — Преобразует 3D координаты в 2D. Возвращает `true`, если точка на экране. Результат пишется во второй аргумент.
+### Photon (Сетевая часть)
+*   `Photon_get_name(photon)` — Имя игрока (string).
+*   `Photon_get_int(photon, "prop_name")` — Чтение кастомных пропов (также есть `_float`, `_bool`, `_double`).
+*   `Photon_set_int(photon, "prop_name", value)` — Запись пропов (также `_float` и т.д.).
 
-**Игроки (PlayerManager):**
-*   `PlayerManager_get_player_manager()` — возвращает указатель на менеджер.
-*   `PlayerManager_get_local_player(mgr)` — указатель на себя.
-*   `PlayerManager_get_players(mgr)` — возвращает Map игроков.
-    *   *Итерация:* `for(kv : players.range()) { var p = kv.second; ... }`
+---
 
-**Компоненты (Player/Component):**
-*   `Component_get_transform(player)` — получить Transform.
-*   `Transform_get_position_ex(transform, use_visual_pos)` — получить координаты (`vec3`).
-*   `Player_get_photon(player)` — данные сети.
-*   `Photon_get_name(photon)` — имя игрока (строка).
+## 4. Память (Memory)
 
-**Вектора (vec3):**
-*   `vec3()`, `vec3(x,y,z)` — создание.
-*   Доступ: `.x`, `.y`, `.z`.
-*   Математика: `v1 + v2`, `v1 - v2`, `v1.dist()` (длина).
+Функции для прямого чтения/записи памяти по адресу.
+
+*   `is_valid(addr)` — Проверка указателя на валидность.
+*   **Чтение:**
+    *   `read_int(addr)`, `read_float(addr)`, `read_bool(addr)`
+    *   `read_vec3(addr)`
+    *   `read_ptr(addr)` (читает uint32_t)
+*   **Запись:**
+    *   `write_int(addr, val)`, `write_float(addr, val)` и т.д.
+
+*   **Работа с массивами Unity:**
+    *   `Array_get_pointers(array_ptr)` — Возвращает вектор адресов (`uint32_list`) из стандартного массива Unity.
+
+---
+
+## 5. Отрисовка (Render API)
+
+Все координаты экранные (`vec2` или `float x, y`).
+
+*   `get_display_size()` — Возвращает `vec2` с разрешением экрана.
+*   `calc_text_size(text, font_size)` — Возвращает `vec2` размера текста (для центрирования).
+
+**Примитивы:**
+*   `draw_line(x1, y1, x2, y2, color, thickness)`
+*   `draw_rect(x, y, w, h, color, rounding, thickness)`
+*   `draw_rect_filled(x, y, w, h, color, rounding)`
+*   `draw_circle(x, y, radius, color, segments, thickness)`
+*   `draw_text(x, y, text, color, shadow_bool)`
+
+---
+
+## 6. Интерфейс (GUI / Menu)
+
+Используются внутри функции `on_menu()`. Функции принимают глобальные переменные для изменения их состояния.
+
+*   `gui_text("Text")` — Просто текст.
+*   `gui_button("Label")` — Кнопка, возвращает `true` при нажатии.
+*   `gui_checkbox("Label", global_var)` — Чекбокс.
+*   `gui_slider_float("Label", global_var, min, max)` — Слайдер.
+*   `gui_slider_int("Label", global_var, min, max)` — Слайдер целочисленный.
+
+---
+
+## Пример полного скрипта
+
+```javascript
+// Настройки (Global - сохраняются между кадрами)
+global cfg_enable = true;
+global cfg_dist = 100.0;
+global col_box = Color(255, 0, 0, 255);
+
+// Меню
+def on_menu()
+{
+    gui_text("My Script");
+    gui_checkbox("Enable ESP", cfg_enable);
+    if (cfg_enable)
+    {
+        gui_slider_float("Distance", cfg_dist, 10.0, 500.0);
+    }
+}
+
+// Рендер
+def on_render()
+{
+    if (!cfg_enable)
+    {
+        return;
+    } 
+
+    // 1. Обновляем камеру
+    update_camera();
+    var screen_size = get_display_size();
+
+    // 2. Получаем данные игры
+    var mgr = PlayerManager_get_player_manager();
+    if (!is_valid(mgr))
+    {
+        return;
+    } 
+    
+    var local = PlayerManager_get_local_player(mgr);
+    if(!is_valid(local))
+    {
+        return;
+    }
+
+    var local_trans = Component_get_transform(local);
+    var local_pos = Transform_get_position_ex(local_trans, true);
+
+    var players = PlayerManager_get_players(mgr);
+
+    // 3. Цикл по игрокам (kv - key/value пара)
+    for (kv : players.range()) 
+    {
+        var player = kv.second; // Получаем указатель из Map
+
+        if (player == local) 
+        {
+            continue;
+        } 
+
+        // --- ВАЖНО: Работа с Transform ---
+        // Получаем Internal Transform компонента
+        var trans = Component_get_transform(player);
+        if (!is_valid(trans))
+        {
+            continue;
+        } 
+
+        // Для Internal передаем true вторым аргументом
+        var pos_3d = Transform_get_position_ex(trans, true);
+
+        // Проверка дистанции
+        if (is_valid(local))
+        {
+            if ((pos_3d - local_pos).dist() > cfg_dist)
+            {
+                continue;
+            } 
+        }
+
+        // --- W2S и отрисовка ---
+        var pos_screen = vec3();
+        if (w2s(pos_3d, pos_screen)) 
+        {
+            // Рисуем линию от низа экрана
+            draw_line(screen_size.x / 2, screen_size.y, pos_screen.x, pos_screen.y, col_box, 1.0);
+            
+            // Текст над головой
+            var name = "Enemy";
+            var photon = Player_get_photon(player);
+            if (is_valid(photon))
+            {
+                name = Photon_get_name(photon);
+            }
+            
+            var t_size = calc_text_size(name, 15.0);
+            draw_text(pos_screen.x - t_size.x/2, pos_screen.y - 20, name, Color(255,255,255,255), true);
+        }
+    }
+}
+```
