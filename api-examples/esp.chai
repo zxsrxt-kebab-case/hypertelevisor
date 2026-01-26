@@ -1,0 +1,96 @@
+// Настройки (Global - сохраняются между кадрами)
+global cfg_enable = true;
+global cfg_dist = 100.0;
+global col_box = Color(255, 0, 0, 255);
+
+// Меню
+def on_menu()
+{
+    gui_text("My Script");
+    gui_checkbox("Enable ESP", cfg_enable);
+    if (cfg_enable)
+    {
+        gui_slider_float("Distance", cfg_dist, 10.0, 500.0);
+    }
+}
+
+// Рендер
+def on_render()
+{
+    if (!cfg_enable)
+    {
+        return;
+    } 
+
+    // 1. Обновляем камеру
+    update_camera();
+    var screen_size = get_display_size();
+
+    // 2. Получаем данные игры
+    var mgr = PlayerManager_get_player_manager();
+    if (!is_valid(mgr))
+    {
+        return;
+    } 
+    
+    var local = PlayerManager_get_local_player(mgr);
+    if(!is_valid(local))
+    {
+        return;
+    }
+
+    var local_trans = Component_get_transform(local);
+    var local_pos = Transform_get_position_ex(local_trans, true);
+
+    var players = PlayerManager_get_players(mgr);
+
+    // 3. Цикл по игрокам (kv - key/value пара)
+    for (kv : players.range()) 
+    {
+        var player = kv.second; // Получаем указатель из Map
+
+        if (player == local) 
+        {
+            continue;
+        } 
+
+        // --- ВАЖНО: Работа с Transform ---
+        // Получаем Internal Transform компонента
+        var trans = Component_get_transform(player);
+        if (!is_valid(trans))
+        {
+            continue;
+        } 
+
+        // Для Internal передаем true вторым аргументом
+        var pos_3d = Transform_get_position_ex(trans, true);
+
+        // Проверка дистанции
+        if (is_valid(local))
+        {
+            if ((pos_3d - local_pos).dist() > cfg_dist)
+            {
+                continue;
+            } 
+        }
+
+        // --- W2S и отрисовка ---
+        var pos_screen = vec3();
+        if (w2s(pos_3d, pos_screen)) 
+        {
+            // Рисуем линию от низа экрана
+            draw_line(screen_size.x / 2, screen_size.y, pos_screen.x, pos_screen.y, col_box, 1.0);
+            
+            // Текст над головой
+            var name = "Enemy";
+            var photon = Player_get_photon(player);
+            if (is_valid(photon))
+            {
+                name = Photon_get_name(photon);
+            }
+            
+            var t_size = calc_text_size(name, 15.0);
+            draw_text(pos_screen.x - t_size.x/2, pos_screen.y - 20, name, Color(255,255,255,255), true);
+        }
+    }
+}
