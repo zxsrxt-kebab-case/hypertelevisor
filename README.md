@@ -1,8 +1,4 @@
-# hypertelevisor
-api and binaries of this
-
-
-# Api:
+# api:
 
 # Документация Scripting API
 
